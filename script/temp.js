@@ -350,9 +350,73 @@ Animation.prototype.draw = function () {
 
 };
 
+/*******************************************
+**************  CAMERA CLASS  **************
+*******************************************/
 function Camera () {
-	this.isit 	= 'ok';	// what?
+	this.distance 		= 0.0;
+	this.lookat 		= [0, 0];
+	this.fieldOfView	= Math.PI / 4.0;
+	this.viewport 		= {
+		left: 0,
+		right: 0,
+		top: 0,
+		bottom: 0,
+		width: 0,
+		height: 0,
+		scale: [1.0, 1.0]
+	};
+	this.updateViewport();
 }
+
+Camera.prototype = {
+	begin: function () {
+		main.context.save();
+		this.applyScale();
+		this.applyTranslation();
+	},
+	end: function () {
+		main.context.restore();
+	},
+	applyScale: function () {
+		main.context.scale(this.viewport.scale[0],this.viewport.scale[1]);
+	},
+	applyTranslation: function () {
+		main.context.translate(-this.viewport.left, -this.viewport.top);
+	},
+	updateViewport: function () {
+		this.aspectRatio		= main.CANVAS_WIDTH / main.CANVAS_HEIGHT;
+		this.viewport.width 	= this.distance * Math.tan(this.fieldOfView);
+		this.viewport.height 	= this.viewport.width / this.aspectRatio;
+		this.viewport.left 		= this.lookat[0] - (this.viewport.width / 2.0);
+		this.viewport.top 		= this.lookat[1] - (this.viewport.height / 2.0);
+		this.viewport.right 	= this.viewport.left + this.viewport.width;
+		this.viewport.bottom 	= this.viewport.top + this.viewport.height;
+		this.viewport.scale[0]	= main.CANVAS_WIDTH / this.viewport.width;
+		this.viewport.scale[1]	= main.CANVAS_HEIGHT / this.viewport.height;
+	},
+	zoomTo: function (z) {
+		this.distance = z;
+		this.updateViewport();
+	},
+	moveTo: function (x, y) {
+		this.lookat[0] = x;
+		this.lookat[1] = y;
+		this.updateViewport();
+	},
+	screenToWorld: function (x, y, obj) {
+		obj = obj || {};
+		obj.x = (x / this.viewport.scale[0]) + this.viewport.left;
+		obj.y = (y / this.viewport.scale[1]) + this.viewport.top;
+		return obj;
+	},
+	worldToScreen: function (x, y, obj) {
+		obj = obj || {};
+		obj.x = (x - this.viewport.left) * (this.viewport.scale[0]);
+     	obj.y = (y - this.viewport.top) * (this.viewport.scale[1]);
+		return obj;
+	}
+};
 
 /*******************************************
 **************  PLAYER CLASS  **************
@@ -384,7 +448,7 @@ function Player (level) {
 	this.wasJumping				= false;
 	this.jumpTime 				= 0;
 
-	this.sprite					= new Texture(this.pos, this.size, 'rgba(0, 0, 0, 0.3)', 1, 'black');
+	this.sprite					= new Texture(this.pos, this.size, 'rgba(180, 0, 0, 0.3)', 1, '#990000');
 }
 
 Player.prototype.Clamp = function (value, min, max) {
@@ -543,12 +607,18 @@ Player.prototype.draw = function () {
 function Level (game) {
 	this.game 				= game;
 	this.levelBG			= {};
+	this.levelMG			= {};
 	this.lines				= [];
 	this.player				= {};
+	this.camera 			= {};
 }
 
 Level.prototype.Initialize = function () {
+	this.levelBG	= new Sprite('images/LEVEL_Background.png', new Vector2(0, 400), new Vector2(main.WORLD_WIDTH, main.WORLD_HEIGHT));
+	this.levelMG	= new Sprite('images/LEVEL_Midground.png', new Vector2(-500, 0), new Vector2(main.WORLD_WIDTH, main.WORLD_HEIGHT));
 	this.player		= new Player(this);
+	this.camera 	= new Camera();
+	this.camera.moveTo(this.player.pos.x, this.player.pos.y);
 	this.LoadLines();
 };
 
@@ -561,34 +631,88 @@ Level.prototype.Dispose = function () {
 Level.prototype.LoadLines = function () {
 
 	// WORLD BORDERS
-	// this.lines.push(new Line(new Vector2(0, 0), new Vector2(main.CANVAS_WIDTH, 0), '#999999', 'CEILING', 1));	//TOP
-	this.lines.push(new Line(new Vector2(main.CANVAS_WIDTH, 0), new Vector2(1280, main.CANVAS_HEIGHT), '#999999', 'WALL', -1));	// RIGHT
-	this.lines.push(new Line(new Vector2(0, main.CANVAS_HEIGHT), new Vector2(1280, main.CANVAS_HEIGHT), '#999999', 'FLOOR', -1)); // BOTTOM
-	this.lines.push(new Line(new Vector2(0, 0), new Vector2(0, main.CANVAS_HEIGHT), '#999999', 'WALL', 1));		// LEFT
+	this.lines.push(new Line(new Vector2(0, 0), new Vector2(main.WORLD_WIDTH, 0), '#999999', 'CEILING', 1));	//TOP
+	this.lines.push(new Line(new Vector2(main.WORLD_WIDTH, 0), new Vector2(main.WORLD_WIDTH, main.WORLD_HEIGHT), '#999999', 'WALL', -1));	// RIGHT
+	this.lines.push(new Line(new Vector2(0, main.WORLD_HEIGHT), new Vector2(main.WORLD_WIDTH, main.WORLD_HEIGHT), '#999999', 'FLOOR', -1)); // BOTTOM
+	this.lines.push(new Line(new Vector2(0, 0), new Vector2(0, main.WORLD_HEIGHT), '#999999', 'WALL', 1));		// LEFT
 
 	// GROUND/WALL/CEILING
-	this.lines.push(new Line(new Vector2(0, 402), new Vector2(1279, 396), "#9F0313", "FLOOR", -1, "GRASS"));
-	this.lines.push(new Line(new Vector2(208, 309), new Vector2(208, 352), "#02AA30", "WALL", 1, "NONE"));
-	this.lines.push(new Line(new Vector2(168, 314), new Vector2(168, 352), "#02AA30", "WALL", -1, "NONE"));
-	this.lines.push(new Line(new Vector2(170, 315), new Vector2(208, 309), "#9F0313", "FLOOR", -1, "GRASS"));
-	this.lines.push(new Line(new Vector2(167, 351), new Vector2(207, 351), "#0E72D5", "CEILING", 1, "NONE"));
-	this.lines.push(new Line(new Vector2(330, 350), new Vector2(429, 348), "#0E72D5", "CEILING", 1, "NONE"));
-	this.lines.push(new Line(new Vector2(544, 348), new Vector2(675, 347), "#0E72D5", "CEILING", 1, "NONE"));
-	this.lines.push(new Line(new Vector2(759, 347), new Vector2(899, 344), "#0E72D5", "CEILING", 1, "NONE"));
-	this.lines.push(new Line(new Vector2(998, 350), new Vector2(1187, 345), "#0E72D5", "CEILING", 1, "NONE"));
-	this.lines.push(new Line(new Vector2(1000, 342), new Vector2(1186, 337), "#9F0313", "FLOOR", -1, "GRASS"));
-	this.lines.push(new Line(new Vector2(758, 340), new Vector2(898, 337), "#9F0313", "FLOOR", -1, "GRASS"));
-	this.lines.push(new Line(new Vector2(545, 341), new Vector2(676, 339), "#9F0313", "FLOOR", -1, "GRASS"));
-	this.lines.push(new Line(new Vector2(331, 344), new Vector2(430, 340), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(0, 1981), new Vector2(main.WORLD_WIDTH, 1981), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(140, 1834), new Vector2(312, 1832), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(400, 1743), new Vector2(689, 1725), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(689, 1596), new Vector2(1061, 1574), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(1061, 1420), new Vector2(1178, 1396), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(1178, 1396), new Vector2(1228, 1376), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(1228, 1376), new Vector2(1287, 1361), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(1287, 1361), new Vector2(1356, 1357), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(1356, 1357), new Vector2(1435, 1366), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(1435, 1366), new Vector2(1520, 1396), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(1520, 1396), new Vector2(1595, 1426), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(1595, 1426), new Vector2(1658, 1426), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(1658, 1426), new Vector2(1789, 1399), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(1789, 1399), new Vector2(1916, 1334), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(1916, 1334), new Vector2(2000, 1277), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(2000, 1277), new Vector2(2097, 1142), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(2097, 1142), new Vector2(2137, 1106), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(2137, 1106), new Vector2(2198, 1078), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(2198, 1078), new Vector2(2221, 1075), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(1278, 1722), new Vector2(1732, 1722), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(1927, 1644), new Vector2(2344, 1506), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(2428, 1315), new Vector2(2498, 1312), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(2498, 1312), new Vector2(2729, 1503), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(2729, 1503), new Vector2(3376, 1488), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(2299, 956), new Vector2(2691, 884), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(2717, 698), new Vector2(3157, 608), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(3043, 479), new Vector2(3461, 304), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(3488, 196), new Vector2(3940, 217), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(4028, 166), new Vector2(4194, 190), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(4188, 189), new Vector2(4188, 1144), "#02AA30", "WALL", 1, "NONE"));
+	this.lines.push(new Line(new Vector2(4188, 1144), new Vector2(4188, 1861), "#02AA30", "WALL", 1, "NONE"));
+	this.lines.push(new Line(new Vector2(4188, 1861), new Vector2(4244, 1861), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(4275, 1683), new Vector2(4316, 1686), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(4187, 1528), new Vector2(4235, 1534), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(4275, 1340), new Vector2(4316, 1340), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(4188, 1168), new Vector2(4227, 1168), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(4260, 955), new Vector2(4316, 950), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(4190, 737), new Vector2(4232, 755), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(4283, 506), new Vector2(4319, 486), "#9F0313", "FLOOR", -1, "GRASS"));
+	this.lines.push(new Line(new Vector2(4190, 291), new Vector2(4236, 318), "#9F0313", "FLOOR", -1, "GRASS"));
+
 
 };
 
 Level.prototype.update = function () {
+	var cameraPosX, cameraPosY;
+
 	this.player.update();
+
+	cameraPosX = this.player.pos.x + (this.player.size.x / 2) - (main.CANVAS_WIDTH / 2);
+	cameraPosY = this.player.pos.y + (this.player.size.y / 2) - (main.CANVAS_HEIGHT / 2);
+
+	if (cameraPosX < 0) {
+		cameraPosX = 0;
+	} else if (cameraPosX > (main.WORLD_WIDTH - main.CANVAS_WIDTH)) {
+		cameraPosX = main.WORLD_WIDTH - main.CANVAS_WIDTH;
+	}
+
+	if (cameraPosY < 0) {
+		cameraPosY = 0;
+	} else if (cameraPosY > (main.WORLD_HEIGHT - main.CANVAS_HEIGHT)) {
+		cameraPosY = main.WORLD_HEIGHT - main.CANVAS_HEIGHT;
+	}
+
+	this.camera.moveTo(cameraPosX, cameraPosY);
+
+	this.levelBG.update(new Vector2(cameraPosX * 0.9, 400));
 };
 
 Level.prototype.draw = function () {
 	var l;
+
+	this.camera.begin();
+
+	this.levelBG.draw();
+	this.levelMG.draw();
 
 	// Draw Collision Map
 	for (l = 0; l < this.lines.length; l++) {
@@ -596,6 +720,8 @@ Level.prototype.draw = function () {
 	}
 
 	this.player.draw();
+
+	this.camera.end();
 
 };
 
@@ -631,8 +757,10 @@ var main = {
 	init: function () {
 		var wrapper;
 		this.isRunning 				= true;
-		this.CANVAS_WIDTH			= 640;
-		this.CANVAS_HEIGHT			= 480;
+		this.CANVAS_WIDTH			= 1080;
+		this.CANVAS_HEIGHT			= 720;
+		this.WORLD_WIDTH 			= 4320;
+		this.WORLD_HEIGHT 			= 2160;
 		this.canvas					= document.getElementById('viewport');
 		this.canvas.width			= this.CANVAS_WIDTH;
 		this.canvas.height			= this.CANVAS_HEIGHT;
